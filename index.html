@@ -29,28 +29,17 @@
         </header>
 
         <main>
-            <!-- Quick Add Section -->
-            <section class="quick-add card glass">
-                <h3>Quick Add by Barcode</h3>
-                <div class="input-row">
-                    <input type="number" id="barcode-input" placeholder="Type barcode number here...">
-                    <button id="add-barcode-btn" class="primary-btn">Find</button>
-                </div>
-                <div class="input-row" style="margin-top: 10px;">
-                    <input type="text" id="name-input" placeholder="Or search by name...">
-                    <button id="search-name-btn" class="secondary-btn">Search</button>
-                </div>
-            </section>
-
-            <!-- Inventory / History Section -->
+            <!-- Inventory & Database Section -->
             <section class="inventory-section">
                 <div class="section-header">
-                    <h3>Your Inventory</h3>
-                    <p class="hint">Tap an item to add to your meal</p>
+                    <h3>Egypt Food Database</h3>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="db-search-input" placeholder="Search Egyptian products (e.g. Almarai, Juhayna)...">
+                    <button id="db-search-btn" class="icon-btn">🔍</button>
                 </div>
                 <div id="inventory-list" class="inventory-grid">
-                    <!-- History items will appear here -->
-                    <p class="empty-state">No saved products yet.</p>
+                    <p class="empty-state">Start typing to search the Egyptian database...</p>
                 </div>
             </section>
 

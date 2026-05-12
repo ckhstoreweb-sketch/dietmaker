@@ -2,6 +2,7 @@
 let currentMeal = [];
 let inventory = JSON.parse(localStorage.getItem('macro_inventory')) || [];
 let activeProduct = null;
+let dbResults = [];
 
 // DOM Elements
 const inventoryList = document.getElementById('inventory-list');
@@ -10,61 +11,98 @@ const totalCaloriesEl = document.getElementById('totalCalories');
 const totalProteinEl = document.getElementById('totalProtein');
 const productModal = document.getElementById('product-modal');
 const toast = document.getElementById('toast');
+const dbSearchInput = document.getElementById('db-search-input');
 
 // Initialize
 updateInventoryUI();
 updateMealUI();
 
-// --- Core Actions ---
+// --- Core Database Search ---
 
-async function handleBarcodeAdd() {
-    const barcode = document.getElementById('barcode-input').value;
-    if (!barcode) return;
-    
-    showToast("Searching barcode...");
-    try {
-        const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-        const data = await res.json();
-        
-        if (data.status === 1) {
-            openProductModal(data.product);
-        } else {
-            showToast("Not found. Enter details manually.");
-            openProductModal({ product_name: "New Product", code: barcode });
-        }
-    } catch (e) {
-        showToast("Network error.");
+async function searchEgyptianDB(query) {
+    if (!query) {
+        updateInventoryUI(); // Show local history if empty
+        return;
     }
-}
 
-async function handleNameSearch() {
-    const query = document.getElementById('name-input').value;
-    if (!query) return;
-    
-    showToast("Searching by name...");
+    showToast("Searching Egyptian Market...");
     try {
-        const res = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1`);
+        // Query Open Food Facts with Egypt filter
+        const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&countries=Egypt&page_size=24`;
+        const res = await fetch(url);
         const data = await res.json();
         
         if (data.products && data.products.length > 0) {
-            openProductModal(data.products[0]);
+            dbResults = data.products.map(p => ({
+                name: p.product_name || p.product_name_en || "Unknown Product",
+                calories: p.nutriments?.['energy-kcal_100g'] || 0,
+                protein: p.nutriments?.proteins_100g || 0,
+                carbs: p.nutriments?.carbohydrates_100g || 0,
+                fat: p.nutriments?.fat_100g || 0,
+                barcode: p.code || 'manual',
+                brand: p.brands || ""
+            }));
+            renderSearchGrid(dbResults);
         } else {
-            showToast("No products found.");
+            inventoryList.innerHTML = `<p class="empty-state">No products found in Egypt database. Try a broader search.</p>`;
         }
     } catch (e) {
-        showToast("Search failed.");
+        showToast("Database search failed.");
     }
 }
 
+function renderSearchGrid(results) {
+    inventoryList.innerHTML = '';
+    
+    // Combine results with local inventory matches
+    const combined = [...results];
+    
+    combined.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'inventory-item';
+        div.innerHTML = `
+            <span class="icon">🍱</span>
+            <span class="name">${p.name}</span>
+            <span class="hint" style="font-size: 0.6rem; color: #94a3b8;">${p.brand}</span>
+        `;
+        div.onclick = () => openProductModal(p);
+        inventoryList.appendChild(div);
+    });
+}
+
+function updateInventoryUI() {
+    if (inventory.length === 0) {
+        inventoryList.innerHTML = `<p class="empty-state">Your history is empty. Search above for Egyptian products!</p>`;
+        return;
+    }
+
+    inventoryList.innerHTML = '';
+    // Show "Frequent Items" header
+    const header = document.createElement('div');
+    header.style.gridColumn = '1 / -1';
+    header.style.color = 'var(--primary)';
+    header.style.fontSize = '0.8rem';
+    header.style.marginBottom = '5px';
+    header.textContent = 'Frequent Items';
+    inventoryList.appendChild(header);
+
+    inventory.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'inventory-item';
+        div.style.border = '1px solid var(--primary)';
+        div.innerHTML = `
+            <span class="icon">⭐</span>
+            <span class="name">${p.name}</span>
+        `;
+        div.onclick = () => openProductModal(p);
+        inventoryList.appendChild(div);
+    });
+}
+
+// --- UI Actions ---
+
 function openProductModal(p) {
-    activeProduct = {
-        name: p.product_name || p.name || "Unknown Product",
-        calories: p.nutriments?.['energy-kcal_100g'] || 0,
-        protein: p.nutriments?.proteins_100g || 0,
-        carbs: p.nutriments?.carbohydrates_100g || 0,
-        fat: p.nutriments?.fat_100g || 0,
-        barcode: p.code || p.barcode || 'manual'
-    };
+    activeProduct = { ...p };
 
     document.getElementById('modalProductName').textContent = activeProduct.name;
     document.getElementById('prodCal').value = activeProduct.calories;
@@ -77,7 +115,6 @@ function openProductModal(p) {
 }
 
 function confirmAddToMeal() {
-    // Update activeProduct with any manual edits in modal
     activeProduct.calories = parseFloat(document.getElementById('prodCal').value) || 0;
     activeProduct.protein = parseFloat(document.getElementById('prodProtein').value) || 0;
     activeProduct.carbs = parseFloat(document.getElementById('prodCarbs').value) || 0;
@@ -99,48 +136,20 @@ function confirmAddToMeal() {
     
     updateMealUI();
     closeModal();
-    showToast("Added to meal & inventory!");
+    showToast("Added to meal!");
 }
 
 function saveToInventory(p) {
-    // Prevent duplicates in inventory (by barcode or name)
     const exists = inventory.findIndex(item => (item.barcode !== 'manual' && item.barcode === p.barcode) || item.name === p.name);
-    
-    if (exists !== -1) {
-        inventory[exists] = p; // Update existing
-    } else {
-        inventory.unshift(p); // Add new to top
-    }
-    
-    // Keep only last 50 items
-    if (inventory.length > 50) inventory.pop();
-    
+    if (exists !== -1) inventory.splice(exists, 1);
+    inventory.unshift(p);
+    if (inventory.length > 20) inventory.pop();
     localStorage.setItem('macro_inventory', JSON.stringify(inventory));
-    updateInventoryUI();
-}
-
-function updateInventoryUI() {
-    if (inventory.length === 0) {
-        inventoryList.innerHTML = `<p class="empty-state">No saved products yet.</p>`;
-        return;
-    }
-
-    inventoryList.innerHTML = '';
-    inventory.forEach(p => {
-        const div = document.createElement('div');
-        div.className = 'inventory-item';
-        div.innerHTML = `
-            <span class="icon">🛒</span>
-            <span class="name">${p.name}</span>
-        `;
-        div.onclick = () => openProductModal(p);
-        inventoryList.appendChild(div);
-    });
 }
 
 function updateMealUI() {
     if (currentMeal.length === 0) {
-        mealList.innerHTML = `<div class="empty-state">Add items from inventory or search above.</div>`;
+        mealList.innerHTML = `<div class="empty-state">Meal is empty.</div>`;
         totalCaloriesEl.textContent = '0';
         totalProteinEl.textContent = '0g';
         return;
@@ -148,23 +157,14 @@ function updateMealUI() {
 
     mealList.innerHTML = '';
     let tc = 0, tp = 0;
-    
     currentMeal.forEach((item, index) => {
         tc += item.calcCalories;
         tp += parseFloat(item.calcProtein);
-        
         const div = document.createElement('div');
         div.className = 'meal-item';
-        div.innerHTML = `
-            <div>
-                <h4>${item.name}</h4>
-                <p>${item.weight}g • ${item.calcCalories} kcal • ${item.calcProtein}g Protein</p>
-            </div>
-            <button class="text-btn" onclick="removeFromMeal(${index})">Remove</button>
-        `;
+        div.innerHTML = `<div><h4>${item.name}</h4><p>${item.weight}g • ${item.calcCalories} kcal</p></div><button class="text-btn" onclick="removeFromMeal(${index})">✕</button>`;
         mealList.appendChild(div);
     });
-
     totalCaloriesEl.textContent = tc;
     totalProteinEl.textContent = tp.toFixed(1) + 'g';
 }
@@ -175,10 +175,7 @@ function removeFromMeal(index) {
 }
 
 function clearMeal() {
-    if (confirm("Clear current meal?")) {
-        currentMeal = [];
-        updateMealUI();
-    }
+    if (confirm("Clear meal?")) { currentMeal = []; updateMealUI(); }
 }
 
 function closeModal() {
@@ -192,18 +189,15 @@ function showToast(m) {
     setTimeout(() => toast.classList.add('hidden'), 3000);
 }
 
-// --- Event Listeners ---
+// --- Listeners ---
+dbSearchInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') searchEgyptianDB(dbSearchInput.value);
+});
 
-document.getElementById('add-barcode-btn').addEventListener('click', handleBarcodeAdd);
-document.getElementById('search-name-btn').addEventListener('click', handleNameSearch);
+document.getElementById('db-search-btn').addEventListener('click', () => {
+    searchEgyptianDB(dbSearchInput.value);
+});
+
 document.getElementById('confirm-add').addEventListener('click', confirmAddToMeal);
 document.getElementById('close-modal').addEventListener('click', closeModal);
 document.getElementById('clear-meal').addEventListener('click', clearMeal);
-
-// Enter key support
-document.getElementById('barcode-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') handleBarcodeAdd();
-});
-document.getElementById('name-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') handleNameSearch();
-});
