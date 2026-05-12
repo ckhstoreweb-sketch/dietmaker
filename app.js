@@ -27,8 +27,8 @@ async function searchEgyptianDB(query) {
 
     showToast("Searching Egyptian Market...");
     try {
-        // Query Open Food Facts with Egypt filter
-        const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&countries=Egypt&page_size=24`;
+        // Broadened search: Removed strict countries filter for better reliability
+        const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=24`;
         const res = await fetch(url);
         const data = await res.json();
         
@@ -44,11 +44,19 @@ async function searchEgyptianDB(query) {
             }));
             renderSearchGrid(dbResults);
         } else {
-            inventoryList.innerHTML = `<p class="empty-state">No products found in Egypt database. Try a broader search.</p>`;
+            inventoryList.innerHTML = `
+                <div class="empty-state">
+                    <p>No products found for "${query}".</p>
+                    <button class="primary-btn" onclick="promptManual('${query}')" style="margin-top:10px">Create "${query}" Manually</button>
+                </div>`;
         }
     } catch (e) {
-        showToast("Database search failed.");
+        showToast("Search failed. Check your internet.");
     }
+}
+
+function promptManual(name) {
+    openProductModal({ product_name: name, code: 'manual' });
 }
 
 function renderSearchGrid(results) {
