@@ -1,9 +1,6 @@
 let currentMeal = [];
 let currentProduct = null;
 let html5QrCode = null;
-let cameraDevices = [];
-let currentDeviceIndex = 0;
-let isTorchOn = false;
 
 // DOM Elements
 const scannerSection = document.getElementById('scanner-section');
@@ -13,38 +10,37 @@ const totalCaloriesEl = document.getElementById('totalCalories');
 const totalProteinEl = document.getElementById('totalProtein');
 const toast = document.getElementById('toast');
 
-// Initialize Scanner
-async function startScanner() {
+// Guaranteed Success: Snap-to-Scan
+document.getElementById('snap-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    showToast("Reading your photo... 📸");
+    
     try {
-        if (!window.Html5Qrcode) throw new Error("Library missing.");
+        // Create a temporary scanner to read the file
         if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
         
-        const config = { 
-            fps: 30,
-            qrbox: (viewWidth, viewHeight) => {
-                const minEdge = Math.min(viewWidth, viewHeight);
-                return { width: Math.floor(minEdge * 0.9), height: Math.floor(minEdge * 0.5) };
-            },
-            experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-        };
-
-        const formats = [
-            Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.QR_CODE
-        ];
-
-        showToast("Powering up AI...");
+        // Use the library's scanFile method
+        const decodedText = await html5QrCode.scanFile(file, true);
+        onScanSuccess(decodedText);
         
-        await html5QrCode.start({ facingMode: "environment" }, { ...config, formatsToSupport: formats }, onScanSuccess, onScanFailure);
-        
-        document.getElementById('camera-overlay').classList.add('hidden');
-        showToast("AI Scanner Ready!");
-
     } catch (err) {
-        document.getElementById('debug-log').textContent = "Error: " + err.message;
-        document.getElementById('debug-log').style.display = "block";
-        showToast("Use Manual Search!");
+        console.error("Scan Error:", err);
+        showToast("Couldn't see barcode. Try again closer or use Search.");
+    }
+});
+
+// Live Scanner (Secondary)
+async function startLiveScanner() {
+    try {
+        if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+        const config = { fps: 30, qrbox: { width: 250, height: 150 } };
+        await html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess);
+        document.querySelector('.scanner-wrapper').classList.remove('mini');
+        document.getElementById('start-live-btn').style.display = 'none';
+    } catch (e) {
+        showToast("Live camera blocked.");
     }
 }
 
@@ -53,8 +49,6 @@ function onScanSuccess(decodedText) {
     if (html5QrCode && html5QrCode.getState() === 2) html5QrCode.pause();
     fetchProductData(decodedText);
 }
-
-function onScanFailure(error) {}
 
 function playBeep() {
     try {
@@ -68,84 +62,41 @@ function playBeep() {
     } catch (e) {}
 }
 
-// AI Cloud Scan
-async function scanNumbersOCR() {
-    if (!html5QrCode || html5QrCode.getState() !== 2) {
-        showToast("Start camera first!");
-        return;
-    }
-
-    showToast("AI Scanning... hold still!");
-    
-    try {
-        const video = document.querySelector('#reader video');
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.filter = 'contrast(1.5) grayscale(1)';
-        ctx.drawImage(video, 0, 0);
-        
-        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
-        const fd = new FormData();
-        fd.append('file', blob);
-        fd.append('apikey', 'K81156828588957'); 
-        fd.append('ocrEngine', '2'); // AI ENGINE
-        fd.append('scale', 'true');
-
-        const res = await fetch('https://api.ocr.space/parse/image', { method: 'POST', body: fd });
-        const data = await res.json();
-        
-        if (data?.ParsedResults?.[0]?.ParsedText) {
-            const matches = data.ParsedResults[0].ParsedText.match(/\d{8,14}/g);
-            if (matches) {
-                onScanSuccess(matches[0]);
-                return;
-            }
-        }
-        showToast("AI missed. Try Zooming in!");
-    } catch (err) {
-        showToast("AI Busy.");
-    }
-}
-
-// API and Logic
+// API Integration
 async function fetchProductData(barcode) {
-    const saved = localStorage.getItem(`prod_${barcode}`);
-    if (saved) { displayProductDetails(JSON.parse(saved), true); return; }
-
-    showToast("Searching...");
+    showToast("Searching database... 🔍");
     try {
         const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
         const data = await res.json();
-        if (data.status === 1) displayProductDetails(data.product);
-        else promptManual(barcode);
+        if (data.status === 1) {
+            displayProductDetails(data.product);
+        } else {
+            showToast("Product not found. Try Search by Name.");
+        }
     } catch (e) {
         showToast("Network Error.");
-        if (html5QrCode?.getState() === 3) html5QrCode.resume();
     }
 }
 
 async function searchProductByName(q) {
-    if (!q) return;
-    showToast("Searching...");
+    if (!q) { q = prompt("Enter product name:"); if(!q) return; }
+    showToast("Searching... 🔍");
     try {
         const res = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1`);
         const data = await res.json();
         if (data.products?.length) {
-            if (html5QrCode?.getState() === 2) html5QrCode.pause();
             displayProductDetails(data.products[0]);
-        } else showToast("No results.");
+        } else showToast("No products found.");
     } catch (e) { showToast("Search failed."); }
 }
 
-function displayProductDetails(p, manual = false) {
+function displayProductDetails(p) {
     currentProduct = {
         name: p.product_name || p.name || "Unknown",
-        calories: manual ? p.calories : (p.nutriments['energy-kcal_100g'] || 0),
-        protein: manual ? p.protein : (p.nutriments.proteins_100g || 0),
-        carbs: manual ? p.carbs : (p.nutriments.carbohydrates_100g || 0),
-        fat: manual ? p.fat : (p.nutriments.fat_100g || 0),
+        calories: p.nutriments['energy-kcal_100g'] || 0,
+        protein: p.nutriments.proteins_100g || 0,
+        carbs: p.nutriments.carbohydrates_100g || 0,
+        fat: p.nutriments.fat_100g || 0,
         barcode: p.code || p.barcode
     };
 
@@ -196,45 +147,15 @@ function closeDetails() {
 }
 
 // Event Listeners
-document.getElementById('start-camera-btn').addEventListener('click', startScanner);
-document.getElementById('ocr-btn').addEventListener('click', scanNumbersOCR);
+document.getElementById('manual-search-btn').addEventListener('click', () => searchProductByName());
+document.getElementById('manual-barcode-btn').addEventListener('click', () => {
+    const code = prompt("Enter Barcode Number:");
+    if (code) fetchProductData(code);
+});
+document.getElementById('start-live-btn').addEventListener('click', startLiveScanner);
+document.getElementById('top-search-btn').addEventListener('click', () => searchProductByName(document.getElementById('top-search').value));
 document.getElementById('add-to-meal').addEventListener('click', addToMeal);
 document.getElementById('close-details').addEventListener('click', closeDetails);
-document.getElementById('top-search-btn').addEventListener('click', () => searchProductByName(document.getElementById('top-search').value));
 document.getElementById('clear-meal').addEventListener('click', () => { currentMeal = []; updateMealUI(); });
-
-document.getElementById('zoom-range').addEventListener('input', async (e) => {
-    const zoom = e.target.value;
-    if (html5QrCode?.getState() === 2) {
-        try {
-            const track = html5QrCode.getRunningTrackCapabilities();
-            if (track.zoom) {
-                await html5QrCode.applyVideoConstraints({ advanced: [{ zoom: zoom }] });
-            }
-        } catch (e) {}
-    }
-});
-
-document.getElementById('torch-btn').addEventListener('click', async () => {
-    isTorchOn = !isTorchOn;
-    try { await html5QrCode.applyVideoConstraints({ advanced: [{ torch: isTorchOn }] }); } catch (e) {}
-});
-
-document.getElementById('camera-btn').addEventListener('click', async () => {
-    if (!cameraDevices.length) cameraDevices = await Html5Qrcode.getCameras();
-    currentDeviceIndex = (currentDeviceIndex + 1) % cameraDevices.length;
-    if (html5QrCode) await html5QrCode.stop();
-    startScanner();
-});
-
-document.getElementById('file-input').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    showToast("AI Scanning photo...");
-    try {
-        const code = await (new Html5Qrcode("reader")).scanFile(file, true);
-        onScanSuccess(code);
-    } catch (e) { showToast("No barcode found."); }
-});
 
 function showToast(m) { toast.textContent = m; toast.classList.remove('hidden'); setTimeout(() => toast.classList.add('hidden'), 3000); }
