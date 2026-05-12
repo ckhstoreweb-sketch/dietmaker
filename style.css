@@ -160,11 +160,33 @@ header {
     border-color: var(--primary);
 }
 
-.scan-tip {
-    text-align: center;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    margin-top: 10px;
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 15px 20px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px 15px;
+    border-radius: 15px;
+}
+
+#zoom-range {
+    flex-grow: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    appearance: none;
+    outline: none;
+}
+
+#zoom-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--primary);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px var(--primary);
 }
 
 /* Product Details Card */

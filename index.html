@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MacroScanner | Scan & Build Meals</title>
-    <meta name="description" content="A premium barcode scanner for tracking nutrition and building custom meals.">
+    <title>MacroScanner | AI Power</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    <script src='https://unpkg.com/tesseract.js@v4.0.1/dist/tesseract.min.js'></script>
 </head>
 <body>
     <div class="app-container">
@@ -35,7 +33,7 @@
             <div id="debug-log" style="color: #ef4444; font-size: 0.7rem; padding: 10px; display: none; background: rgba(0,0,0,0.5); border-radius: 8px; margin-bottom: 10px;"></div>
 
             <section class="search-bar-container">
-                <input type="text" id="top-search" placeholder="Can't scan? Type product name here...">
+                <input type="text" id="top-search" placeholder="Type product name here...">
                 <button id="top-search-btn" class="icon-btn">🔍</button>
             </section>
 
@@ -43,18 +41,25 @@
                 <div class="scanner-wrapper">
                     <div id="reader"></div>
                     <div id="camera-overlay" class="camera-overlay">
-                        <button id="start-camera-btn" class="primary-btn" style="width: auto; padding: 15px 30px;">Allow Camera Access</button>
+                        <button id="start-camera-btn" class="primary-btn">Start AI Scanner</button>
                     </div>
                 </div>
+                
+                <div class="zoom-controls">
+                    <span>1x</span>
+                    <input type="range" id="zoom-range" min="1" max="5" step="0.1" value="1">
+                    <span>5x</span>
+                </div>
+
                 <div class="scanner-controls">
                     <button id="manual-btn" class="secondary-btn">Barcode</button>
                     <button id="camera-btn" class="secondary-btn">Lens</button>
                     <button id="torch-btn" class="secondary-btn">Flash</button>
-                    <button id="ocr-btn" class="secondary-btn">Scan Numbers</button>
+                    <button id="ocr-btn" class="secondary-btn">AI Scan</button>
                     <label for="file-input" class="secondary-btn">Upload</label>
                     <input type="file" id="file-input" accept="image/*" style="display:none">
                 </div>
-                <p class="scan-tip">Tip: Hold barcode 6 inches away and keep still</p>
+                <p class="scan-tip">Tip: Stay 8 inches away & use Zoom slider!</p>
             </section>
 
             <section id="product-details" class="hidden">
@@ -64,7 +69,6 @@
                         <h2 id="productName">Product Name</h2>
                     </div>
                     <div class="product-info">
-                        <p class="edit-hint">Tap values to edit if incorrect</p>
                         <div class="macro-grid">
                             <div class="macro-item">
                                 <input type="number" class="macro-input" id="prodCal" value="0">
@@ -84,7 +88,7 @@
                             </div>
                         </div>
                         <div class="input-group">
-                            <label for="prodWeight">Amount (grams/ml)</label>
+                            <label for="prodWeight">Weight (g)</label>
                             <input type="number" id="prodWeight" value="100" min="1">
                         </div>
                         <button id="add-to-meal" class="primary-btn">Add to Meal</button>
@@ -95,34 +99,22 @@
             <section id="meal-builder">
                 <div class="section-header">
                     <h2>Your Meal</h2>
-                    <button id="clear-meal" class="text-btn">Clear All</button>
+                    <button id="clear-meal" class="text-btn">Clear</button>
                 </div>
                 <div id="meal-list" class="meal-list">
-                    <!-- Items will be added here -->
-                    <div class="empty-state">
-                        <p>No items added yet. Scan a product to start!</p>
-                    </div>
+                    <div class="empty-state">Scan something!</div>
                 </div>
             </section>
         </main>
 
         <footer>
             <div class="bottom-nav">
-                <button class="nav-item active" id="navScan">
-                    <span class="nav-icon">📷</span>
-                    <span>Scan</span>
-                </button>
-                <button class="nav-item" id="navMeal">
-                    <span class="nav-icon">🍽️</span>
-                    <span>Meal</span>
-                </button>
+                <button class="nav-item active" id="navScan">📷 Scan</button>
+                <button class="nav-item" id="navMeal">🍽️ Meal</button>
             </div>
         </footer>
     </div>
-
-    <!-- Notification Toast -->
     <div id="toast" class="toast hidden"></div>
-
     <script src="app.js"></script>
 </body>
 </html>
