@@ -17,79 +17,75 @@ const toast = document.getElementById('toast');
 
 // Initialize Scanner
 async function startScanner() {
-    if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
-    
-    // Get all cameras
     try {
-        cameraDevices = await Html5Qrcode.getCameras();
-        if (cameraDevices.length === 0) {
-            showToast("No cameras found.");
-            return;
+        if (!window.Html5Qrcode) {
+            throw new Error("Scanner library not loaded. Check connection.");
         }
-    } catch (err) {
-        showToast("Camera permission needed.");
-        return;
-    }
 
-    const config = { 
-        fps: 30,
-        qrbox: (viewWidth, viewHeight) => {
-            const minEdge = Math.min(viewWidth, viewHeight);
-            return { width: Math.floor(minEdge * 0.8), height: Math.floor(minEdge * 0.5) };
-        }
-    };
+        if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+        
+        const config = { 
+            fps: 20,
+            qrbox: (viewWidth, viewHeight) => {
+                const minEdge = Math.min(viewWidth, viewHeight);
+                return { width: Math.floor(minEdge * 0.8), height: Math.floor(minEdge * 0.5) };
+            }
+        };
 
-    const deviceId = cameraDevices[currentDeviceIndex].id;
-    
-    html5QrCode.start(
-        deviceId,
-        config,
-        onScanSuccess,
-        onScanFailure
-    ).then(() => {
+        showToast("Accessing camera...");
+        
+        // Simple start with back camera
+        await html5QrCode.start(
+            { facingMode: "environment" },
+            config,
+            onScanSuccess,
+            onScanFailure
+        );
+        
         document.getElementById('camera-overlay').classList.add('hidden');
-    }).catch((err) => {
-        console.error("Scanner Start Error:", err);
-        // Fallback to basic start
-        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
-            .then(() => document.getElementById('camera-overlay').classList.add('hidden'));
-    });
+        showToast("Camera Active!");
+
+    } catch (err) {
+        console.error("Scanner Error:", err);
+        const log = document.getElementById('debug-log');
+        log.textContent = "Error: " + err.message;
+        log.style.display = "block";
+        showToast("Camera failed. Use search bar!");
+    }
 }
 
 function onScanSuccess(decodedText, decodedResult) {
     console.log(`Scan Result: ${decodedText}`);
     playBeep();
-    // Pause scanner to process product
     html5QrCode.pause();
     fetchProductData(decodedText);
 }
 
 function playBeep() {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
 
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
 
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
-    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
 
-    oscillator.start();
-    oscillator.stop(audioCtx.currentTime + 0.1);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.1);
+    } catch (e) {}
 }
 
-function onScanFailure(error) {
-    // Silently ignore failures during scanning
-}
+function onScanFailure(error) {}
 
 // API Integration
 async function fetchProductData(barcode) {
-    // Check Local Storage first for manual corrections
     const savedData = localStorage.getItem(`prod_${barcode}`);
     if (savedData) {
-        showToast("Loading saved custom data...");
+        showToast("Loading saved data...");
         displayProductDetails(JSON.parse(savedData), true);
         return;
     }
@@ -102,17 +98,16 @@ async function fetchProductData(barcode) {
         if (data.status === 1) {
             displayProductDetails(data.product);
         } else {
-            showToast("Product not found. Enter details manually.");
+            showToast("Not found. Enter manually.");
             promptManualNutrition(barcode);
         }
     } catch (error) {
-        console.error("API Error:", error);
-        showToast("Error fetching product data");
+        showToast("API Error. Use search bar.");
         html5QrCode.resume();
     }
 }
 
-// Navigation and Event Listeners
+// Search Logic
 document.getElementById('top-search-btn').addEventListener('click', () => {
     const query = document.getElementById('top-search').value;
     if (query) searchProductByName(query);
@@ -147,25 +142,14 @@ async function searchProductByName(passedQuery) {
 function promptManualNutrition(barcode) {
     const name = prompt("Product Name:", "Unknown Product");
     if (!name) {
-        html5QrCode.resume();
+        if(html5QrCode) html5QrCode.resume();
         return;
     }
-    const cals = prompt("Calories per 100g:", "0");
-    const prot = prompt("Protein per 100g:", "0");
-    const carbs = prompt("Carbs per 100g:", "0");
-    const fat = prompt("Fat per 100g:", "0");
-
-    const manualProduct = {
+    displayProductDetails({
         product_name: name,
-        nutriments: {
-            'energy-kcal_100g': parseFloat(cals) || 0,
-            proteins_100g: parseFloat(prot) || 0,
-            carbohydrates_100g: parseFloat(carbs) || 0,
-            fat_100g: parseFloat(fat) || 0
-        },
+        nutriments: { 'energy-kcal_100g': 0, proteins_100g: 0, carbohydrates_100g: 0, fat_100g: 0 },
         code: barcode || 'manual'
-    };
-    displayProductDetails(manualProduct);
+    });
 }
 
 function displayProductDetails(product, isManual = false) {
@@ -195,7 +179,6 @@ function addToMeal() {
     const weight = parseFloat(document.getElementById('prodWeight').value) || 100;
     const ratio = weight / 100;
 
-    // Capture potentially edited values
     const editedProduct = {
         ...currentProduct,
         calories: parseFloat(document.getElementById('prodCal').value),
@@ -204,7 +187,6 @@ function addToMeal() {
         fat: parseFloat(document.getElementById('prodFat').value)
     };
 
-    // Save corrections to local storage
     if (editedProduct.barcode) {
         localStorage.setItem(`prod_${editedProduct.barcode}`, JSON.stringify(editedProduct));
     }
@@ -275,16 +257,13 @@ function clearMeal() {
     }
 }
 
-// UI Helpers
 function showToast(message) {
     toast.textContent = message;
     toast.classList.remove('hidden');
-    setTimeout(() => {
-        toast.classList.add('hidden');
-    }, 3000);
+    setTimeout(() => toast.classList.add('hidden'), 3000);
 }
 
-// Navigation
+// Navigation and Camera Controls
 document.getElementById('navScan').addEventListener('click', () => {
     document.getElementById('navScan').classList.add('active');
     document.getElementById('navMeal').classList.remove('active');
@@ -297,73 +276,42 @@ document.getElementById('navMeal').addEventListener('click', () => {
     document.getElementById('meal-builder').scrollIntoView({ behavior: 'smooth' });
 });
 
-// Event Listeners
 document.getElementById('add-to-meal').addEventListener('click', addToMeal);
 document.getElementById('close-details').addEventListener('click', closeProductDetails);
 document.getElementById('clear-meal').addEventListener('click', clearMeal);
+
 document.getElementById('manual-btn').addEventListener('click', () => {
-    const code = prompt("Enter Barcode Number:");
+    const code = prompt("Enter Barcode:");
     if (code) fetchProductData(code);
 });
-document.getElementById('search-btn').addEventListener('click', searchProductByName);
-document.getElementById('flip-btn').addEventListener('click', () => {
-    const video = document.querySelector('#reader video');
-    if (video) {
-        video.classList.toggle('mirrored');
-        showToast(video.classList.contains('mirrored') ? "Mirror View On" : "Natural View On");
-    }
-});
 
-document.getElementById('camera-btn').addEventListener('click', async () => {
-    if (cameraDevices.length <= 1) {
-        showToast("Only one camera detected.");
-        return;
-    }
-    
-    currentDeviceIndex = (currentDeviceIndex + 1) % cameraDevices.length;
-    showToast(`Switching to lens ${currentDeviceIndex + 1}...`);
-    
-    if (html5QrCode) {
-        await html5QrCode.stop();
-        startScanner();
+document.getElementById('torch-btn').addEventListener('click', async () => {
+    if (!html5QrCode) return;
+    try {
+        isTorchOn = !isTorchOn;
+        await html5QrCode.applyVideoConstraints({ advanced: [{ torch: isTorchOn }] });
+        showToast(isTorchOn ? "Flash On" : "Flash Off");
+    } catch (e) {
+        showToast("Flash not supported.");
     }
 });
 
 document.getElementById('file-input').addEventListener('change', (e) => {
     if (e.target.files.length === 0) return;
-    const imageFile = e.target.files[0];
-    
     showToast("Scanning photo...");
-    html5QrCode.scanFile(imageFile, true)
-        .then(decodedText => {
-            onScanSuccess(decodedText);
-        })
-        .catch(err => {
-            showToast("No barcode found in photo. Try another shot.");
-        });
+    html5QrCode.scanFile(e.target.files[0], true)
+        .then(decodedText => onScanSuccess(decodedText))
+        .catch(() => showToast("No barcode found."));
 });
 
-document.getElementById('torch-btn').addEventListener('click', async () => {
-    if (!html5QrCode || currentFacingMode === "user") {
-        showToast("Flash only works on back camera");
-        return;
-    }
-
+document.getElementById('camera-btn').addEventListener('click', async () => {
     try {
-        isTorchOn = !isTorchOn;
-        await html5QrCode.applyVideoConstraints({
-            advanced: [{ torch: isTorchOn }]
-        });
-        showToast(isTorchOn ? "Flash On" : "Flash Off");
-    } catch (err) {
-        console.error("Torch Error:", err);
-        showToast("Flash not supported on this device");
-        isTorchOn = false;
-    }
+        if (!cameraDevices.length) cameraDevices = await Html5Qrcode.getCameras();
+        if (cameraDevices.length <= 1) { showToast("No other cameras."); return; }
+        currentDeviceIndex = (currentDeviceIndex + 1) % cameraDevices.length;
+        if (html5QrCode) await html5QrCode.stop();
+        startScanner();
+    } catch (e) { showToast("Camera switch failed."); }
 });
 
 document.getElementById('start-camera-btn').addEventListener('click', startScanner);
-
-// Start the app
-// Removing auto-start for mobile browsers to prevent permission blocking
-// startScanner();
