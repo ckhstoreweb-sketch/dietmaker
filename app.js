@@ -1,161 +1,209 @@
+// State Management
 let currentMeal = [];
-let currentProduct = null;
-let html5QrCode = null;
+let inventory = JSON.parse(localStorage.getItem('macro_inventory')) || [];
+let activeProduct = null;
 
 // DOM Elements
-const scannerSection = document.getElementById('scanner-section');
-const productDetails = document.getElementById('product-details');
+const inventoryList = document.getElementById('inventory-list');
 const mealList = document.getElementById('meal-list');
 const totalCaloriesEl = document.getElementById('totalCalories');
 const totalProteinEl = document.getElementById('totalProtein');
+const productModal = document.getElementById('product-modal');
 const toast = document.getElementById('toast');
 
-// Guaranteed Success: Snap-to-Scan
-document.getElementById('snap-input').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+// Initialize
+updateInventoryUI();
+updateMealUI();
 
-    showToast("Reading your photo... 📸");
+// --- Core Actions ---
+
+async function handleBarcodeAdd() {
+    const barcode = document.getElementById('barcode-input').value;
+    if (!barcode) return;
     
-    try {
-        // Create a temporary scanner to read the file
-        if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
-        
-        // Use the library's scanFile method
-        const decodedText = await html5QrCode.scanFile(file, true);
-        onScanSuccess(decodedText);
-        
-    } catch (err) {
-        console.error("Scan Error:", err);
-        showToast("Couldn't see barcode. Try again closer or use Search.");
-    }
-});
-
-// Live Scanner (Secondary)
-async function startLiveScanner() {
-    try {
-        if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
-        const config = { fps: 30, qrbox: { width: 250, height: 150 } };
-        await html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess);
-        document.querySelector('.scanner-wrapper').classList.remove('mini');
-        document.getElementById('start-live-btn').style.display = 'none';
-    } catch (e) {
-        showToast("Live camera blocked.");
-    }
-}
-
-function onScanSuccess(decodedText) {
-    playBeep();
-    if (html5QrCode && html5QrCode.getState() === 2) html5QrCode.pause();
-    fetchProductData(decodedText);
-}
-
-function playBeep() {
-    try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.1);
-    } catch (e) {}
-}
-
-// API Integration
-async function fetchProductData(barcode) {
-    showToast("Searching database... 🔍");
+    showToast("Searching barcode...");
     try {
         const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
         const data = await res.json();
+        
         if (data.status === 1) {
-            displayProductDetails(data.product);
+            openProductModal(data.product);
         } else {
-            showToast("Product not found. Try Search by Name.");
+            showToast("Not found. Enter details manually.");
+            openProductModal({ product_name: "New Product", code: barcode });
         }
     } catch (e) {
-        showToast("Network Error.");
+        showToast("Network error.");
     }
 }
 
-async function searchProductByName(q) {
-    if (!q) { q = prompt("Enter product name:"); if(!q) return; }
-    showToast("Searching... 🔍");
+async function handleNameSearch() {
+    const query = document.getElementById('name-input').value;
+    if (!query) return;
+    
+    showToast("Searching by name...");
     try {
-        const res = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1`);
+        const res = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1`);
         const data = await res.json();
-        if (data.products?.length) {
-            displayProductDetails(data.products[0]);
-        } else showToast("No products found.");
-    } catch (e) { showToast("Search failed."); }
+        
+        if (data.products && data.products.length > 0) {
+            openProductModal(data.products[0]);
+        } else {
+            showToast("No products found.");
+        }
+    } catch (e) {
+        showToast("Search failed.");
+    }
 }
 
-function displayProductDetails(p) {
-    currentProduct = {
-        name: p.product_name || p.name || "Unknown",
-        calories: p.nutriments['energy-kcal_100g'] || 0,
-        protein: p.nutriments.proteins_100g || 0,
-        carbs: p.nutriments.carbohydrates_100g || 0,
-        fat: p.nutriments.fat_100g || 0,
-        barcode: p.code || p.barcode
+function openProductModal(p) {
+    activeProduct = {
+        name: p.product_name || p.name || "Unknown Product",
+        calories: p.nutriments?.['energy-kcal_100g'] || 0,
+        protein: p.nutriments?.proteins_100g || 0,
+        carbs: p.nutriments?.carbohydrates_100g || 0,
+        fat: p.nutriments?.fat_100g || 0,
+        barcode: p.code || p.barcode || 'manual'
     };
 
-    document.getElementById('productName').textContent = currentProduct.name;
-    document.getElementById('prodCal').value = currentProduct.calories;
-    document.getElementById('prodProtein').value = currentProduct.protein;
-    document.getElementById('prodCarbs').value = currentProduct.carbs;
-    document.getElementById('prodFat').value = currentProduct.fat;
-    
-    scannerSection.classList.add('hidden');
-    productDetails.classList.remove('hidden');
+    document.getElementById('modalProductName').textContent = activeProduct.name;
+    document.getElementById('prodCal').value = activeProduct.calories;
+    document.getElementById('prodProtein').value = activeProduct.protein;
+    document.getElementById('prodCarbs').value = activeProduct.carbs;
+    document.getElementById('prodFat').value = activeProduct.fat;
+    document.getElementById('prodWeight').value = 100;
+
+    productModal.classList.remove('hidden');
 }
 
-function addToMeal() {
+function confirmAddToMeal() {
+    // Update activeProduct with any manual edits in modal
+    activeProduct.calories = parseFloat(document.getElementById('prodCal').value) || 0;
+    activeProduct.protein = parseFloat(document.getElementById('prodProtein').value) || 0;
+    activeProduct.carbs = parseFloat(document.getElementById('prodCarbs').value) || 0;
+    activeProduct.fat = parseFloat(document.getElementById('prodFat').value) || 0;
+    
     const weight = parseFloat(document.getElementById('prodWeight').value) || 100;
     const ratio = weight / 100;
-    const item = {
-        ...currentProduct,
-        weight,
-        calcCalories: Math.round(document.getElementById('prodCal').value * ratio),
-        calcProtein: (document.getElementById('prodProtein').value * ratio).toFixed(1),
-        calcCarbs: (document.getElementById('prodCarbs').value * ratio).toFixed(1),
-        calcFat: (document.getElementById('prodFat').value * ratio).toFixed(1)
+
+    const mealItem = {
+        ...activeProduct,
+        id: Date.now(),
+        weight: weight,
+        calcCalories: Math.round(activeProduct.calories * ratio),
+        calcProtein: (activeProduct.protein * ratio).toFixed(1)
     };
-    currentMeal.push(item);
+
+    currentMeal.push(mealItem);
+    saveToInventory(activeProduct);
+    
     updateMealUI();
-    closeDetails();
+    closeModal();
+    showToast("Added to meal & inventory!");
+}
+
+function saveToInventory(p) {
+    // Prevent duplicates in inventory (by barcode or name)
+    const exists = inventory.findIndex(item => (item.barcode !== 'manual' && item.barcode === p.barcode) || item.name === p.name);
+    
+    if (exists !== -1) {
+        inventory[exists] = p; // Update existing
+    } else {
+        inventory.unshift(p); // Add new to top
+    }
+    
+    // Keep only last 50 items
+    if (inventory.length > 50) inventory.pop();
+    
+    localStorage.setItem('macro_inventory', JSON.stringify(inventory));
+    updateInventoryUI();
+}
+
+function updateInventoryUI() {
+    if (inventory.length === 0) {
+        inventoryList.innerHTML = `<p class="empty-state">No saved products yet.</p>`;
+        return;
+    }
+
+    inventoryList.innerHTML = '';
+    inventory.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'inventory-item';
+        div.innerHTML = `
+            <span class="icon">🛒</span>
+            <span class="name">${p.name}</span>
+        `;
+        div.onclick = () => openProductModal(p);
+        inventoryList.appendChild(div);
+    });
 }
 
 function updateMealUI() {
+    if (currentMeal.length === 0) {
+        mealList.innerHTML = `<div class="empty-state">Add items from inventory or search above.</div>`;
+        totalCaloriesEl.textContent = '0';
+        totalProteinEl.textContent = '0g';
+        return;
+    }
+
     mealList.innerHTML = '';
     let tc = 0, tp = 0;
-    currentMeal.forEach(item => {
-        tc += item.calcCalories; tp += parseFloat(item.calcProtein);
+    
+    currentMeal.forEach((item, index) => {
+        tc += item.calcCalories;
+        tp += parseFloat(item.calcProtein);
+        
         const div = document.createElement('div');
         div.className = 'meal-item';
-        div.innerHTML = `<h4>${item.name}</h4><p>${item.calcCalories} kcal | ${item.calcProtein}g P</p>`;
+        div.innerHTML = `
+            <div>
+                <h4>${item.name}</h4>
+                <p>${item.weight}g • ${item.calcCalories} kcal • ${item.calcProtein}g Protein</p>
+            </div>
+            <button class="text-btn" onclick="removeFromMeal(${index})">Remove</button>
+        `;
         mealList.appendChild(div);
     });
+
     totalCaloriesEl.textContent = tc;
     totalProteinEl.textContent = tp.toFixed(1) + 'g';
 }
 
-function closeDetails() {
-    productDetails.classList.add('hidden');
-    scannerSection.classList.remove('hidden');
-    if (html5QrCode?.getState() === 3) html5QrCode.resume();
+function removeFromMeal(index) {
+    currentMeal.splice(index, 1);
+    updateMealUI();
 }
 
-// Event Listeners
-document.getElementById('manual-search-btn').addEventListener('click', () => searchProductByName());
-document.getElementById('manual-barcode-btn').addEventListener('click', () => {
-    const code = prompt("Enter Barcode Number:");
-    if (code) fetchProductData(code);
-});
-document.getElementById('start-live-btn').addEventListener('click', startLiveScanner);
-document.getElementById('top-search-btn').addEventListener('click', () => searchProductByName(document.getElementById('top-search').value));
-document.getElementById('add-to-meal').addEventListener('click', addToMeal);
-document.getElementById('close-details').addEventListener('click', closeDetails);
-document.getElementById('clear-meal').addEventListener('click', () => { currentMeal = []; updateMealUI(); });
+function clearMeal() {
+    if (confirm("Clear current meal?")) {
+        currentMeal = [];
+        updateMealUI();
+    }
+}
 
-function showToast(m) { toast.textContent = m; toast.classList.remove('hidden'); setTimeout(() => toast.classList.add('hidden'), 3000); }
+function closeModal() {
+    productModal.classList.add('hidden');
+    activeProduct = null;
+}
+
+function showToast(m) {
+    toast.textContent = m;
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.add('hidden'), 3000);
+}
+
+// --- Event Listeners ---
+
+document.getElementById('add-barcode-btn').addEventListener('click', handleBarcodeAdd);
+document.getElementById('search-name-btn').addEventListener('click', handleNameSearch);
+document.getElementById('confirm-add').addEventListener('click', confirmAddToMeal);
+document.getElementById('close-modal').addEventListener('click', closeModal);
+document.getElementById('clear-meal').addEventListener('click', clearMeal);
+
+// Enter key support
+document.getElementById('barcode-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleBarcodeAdd();
+});
+document.getElementById('name-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleNameSearch();
+});
