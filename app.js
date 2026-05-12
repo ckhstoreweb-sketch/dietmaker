@@ -47,12 +47,17 @@ async function startScanner() {
 
         showToast("Accessing High-Res Camera...");
         
+        // Correct configuration with supported formats
+        const fullConfig = {
+            ...config,
+            formatsToSupport: formatsToSupport
+        };
+
         await html5QrCode.start(
             { facingMode: "environment" },
-            config,
+            fullConfig,
             onScanSuccess,
-            onScanFailure,
-            formatsToSupport
+            onScanFailure
         );
         
         document.getElementById('camera-overlay').classList.add('hidden');
@@ -70,7 +75,9 @@ async function startScanner() {
 function onScanSuccess(decodedText, decodedResult) {
     console.log(`Scan Result: ${decodedText}`);
     playBeep();
-    html5QrCode.pause();
+    if (html5QrCode && html5QrCode.getState() === 2) { // 2 is SCANNING
+        html5QrCode.pause();
+    }
     fetchProductData(decodedText);
 }
 
@@ -116,7 +123,9 @@ async function fetchProductData(barcode) {
         }
     } catch (error) {
         showToast("API Error. Use search bar.");
-        html5QrCode.resume();
+        if (html5QrCode && html5QrCode.getState() === 3) { // 3 is PAUSED
+            html5QrCode.resume();
+        }
     }
 }
 
@@ -143,19 +152,29 @@ async function searchProductByName(passedQuery) {
         const data = await response.json();
 
         if (data.products && data.products.length > 0) {
+            // Check if scanning was active and pause it
+            if (html5QrCode && html5QrCode.getState() === 2) { // 2 is SCANNING
+                html5QrCode.pause();
+            }
             displayProductDetails(data.products[0]);
         } else {
             showToast("No products found.");
+            if (html5QrCode && html5QrCode.getState() === 3) { // 3 is PAUSED
+                html5QrCode.resume();
+            }
         }
     } catch (error) {
         showToast("Search failed.");
+        if (html5QrCode && html5QrCode.getState() === 3) { // 3 is PAUSED
+            html5QrCode.resume();
+        }
     }
 }
 
 function promptManualNutrition(barcode) {
     const name = prompt("Product Name:", "Unknown Product");
     if (!name) {
-        if(html5QrCode) html5QrCode.resume();
+        if(html5QrCode && html5QrCode.getState() === 3) html5QrCode.resume();
         return;
     }
     displayProductDetails({
@@ -260,13 +279,18 @@ function closeProductDetails() {
     productDetails.classList.add('hidden');
     scannerSection.classList.remove('hidden');
     scannerSection.classList.add('active');
-    if (html5QrCode) html5QrCode.resume();
+    if (html5QrCode && html5QrCode.getState() === 3) { // 3 is PAUSED
+        html5QrCode.resume();
+    }
 }
 
 function clearMeal() {
     if (confirm("Clear your current meal?")) {
         currentMeal = [];
         updateMealUI();
+        // Update totals immediately
+        totalCaloriesEl.textContent = '0';
+        totalProteinEl.textContent = '0g';
     }
 }
 
