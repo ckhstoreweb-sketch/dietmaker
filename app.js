@@ -361,3 +361,41 @@ document.getElementById('camera-btn').addEventListener('click', async () => {
 });
 
 document.getElementById('start-camera-btn').addEventListener('click', startScanner);
+
+async function scanNumbersOCR() {
+    if (!html5QrCode || html5QrCode.getState() !== 2) {
+        showToast("Start camera first!");
+        return;
+    }
+
+    showToast("Reading numbers... hold still!");
+    
+    try {
+        // Capture a frame from the video
+        const video = document.querySelector('#reader video');
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+        
+        // Run OCR
+        const result = await Tesseract.recognize(canvas, 'eng', {
+            tessedit_char_whitelist: '0123456789' // Only look for numbers
+        });
+        
+        const cleanText = result.data.text.replace(/[^0-9]/g, '');
+        
+        if (cleanText.length >= 8) {
+            showToast(`Found: ${cleanText}`);
+            fetchProductData(cleanText);
+        } else {
+            showToast("Could not read numbers clearly. Try closer.");
+        }
+    } catch (err) {
+        console.error("OCR Error:", err);
+        showToast("OCR failed. Try photo upload.");
+    }
+}
+
+document.getElementById('ocr-btn').addEventListener('click', scanNumbersOCR);
