@@ -25,21 +25,34 @@ async function startScanner() {
         if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
         
         const config = { 
-            fps: 20,
+            fps: 30,
             qrbox: (viewWidth, viewHeight) => {
                 const minEdge = Math.min(viewWidth, viewHeight);
-                return { width: Math.floor(minEdge * 0.8), height: Math.floor(minEdge * 0.5) };
+                return { width: Math.floor(minEdge * 0.9), height: Math.floor(minEdge * 0.5) };
+            },
+            aspectRatio: 1.0,
+            experimentalFeatures: {
+                useBarCodeDetectorIfSupported: true
             }
         };
 
-        showToast("Accessing camera...");
+        const formatsToSupport = [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.QR_CODE
+        ];
+
+        showToast("Accessing High-Res Camera...");
         
-        // Simple start with back camera
         await html5QrCode.start(
             { facingMode: "environment" },
             config,
             onScanSuccess,
-            onScanFailure
+            onScanFailure,
+            formatsToSupport
         );
         
         document.getElementById('camera-overlay').classList.add('hidden');
@@ -296,12 +309,21 @@ document.getElementById('torch-btn').addEventListener('click', async () => {
     }
 });
 
-document.getElementById('file-input').addEventListener('change', (e) => {
+document.getElementById('file-input').addEventListener('change', async (e) => {
     if (e.target.files.length === 0) return;
-    showToast("Scanning photo...");
-    html5QrCode.scanFile(e.target.files[0], true)
-        .then(decodedText => onScanSuccess(decodedText))
-        .catch(() => showToast("No barcode found."));
+    const file = e.target.files[0];
+    
+    showToast("Processing high-res photo...");
+    try {
+        if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+        
+        // Scan the file
+        const decodedText = await html5QrCode.scanFile(file, true);
+        onScanSuccess(decodedText);
+    } catch (err) {
+        console.error("File Scan Error:", err);
+        showToast("No barcode found. Try taking a closer photo.");
+    }
 });
 
 document.getElementById('camera-btn').addEventListener('click', async () => {
