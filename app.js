@@ -46,10 +46,13 @@ async function startScanner() {
         config,
         onScanSuccess,
         onScanFailure
-    ).catch((err) => {
+    ).then(() => {
+        document.getElementById('camera-overlay').classList.add('hidden');
+    }).catch((err) => {
         console.error("Scanner Start Error:", err);
         // Fallback to basic start
-        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure);
+        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
+            .then(() => document.getElementById('camera-overlay').classList.add('hidden'));
     });
 }
 
@@ -359,5 +362,8 @@ document.getElementById('torch-btn').addEventListener('click', async () => {
     }
 });
 
+document.getElementById('start-camera-btn').addEventListener('click', startScanner);
+
 // Start the app
-startScanner();
+// Removing auto-start for mobile browsers to prevent permission blocking
+// startScanner();
