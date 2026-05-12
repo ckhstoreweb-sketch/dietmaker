@@ -38,28 +38,26 @@
             </section>
 
             <section id="scanner-section" class="active">
-                <div class="scanner-wrapper">
-                    <div id="reader"></div>
-                    <div id="camera-overlay" class="camera-overlay">
-                        <button id="start-camera-btn" class="primary-btn">Start AI Scanner</button>
+                <div class="main-actions">
+                    <label for="snap-input" class="action-card">
+                        <span class="action-icon">📸</span>
+                        <div class="action-text">
+                            <h3>Snap Barcode</h3>
+                            <p>Uses your iPhone's real camera for 100% focus</p>
+                        </div>
+                    </label>
+                    <input type="file" id="snap-input" accept="image/*" capture="environment" style="display:none">
+
+                    <div class="action-row">
+                        <button id="manual-search-btn" class="secondary-btn">🔍 Search by Name</button>
+                        <button id="manual-barcode-btn" class="secondary-btn">⌨️ Type Barcode</button>
                     </div>
                 </div>
-                
-                <div class="zoom-controls">
-                    <span>1x</span>
-                    <input type="range" id="zoom-range" min="1" max="5" step="0.1" value="1">
-                    <span>5x</span>
-                </div>
 
-                <div class="scanner-controls">
-                    <button id="manual-btn" class="secondary-btn">Barcode</button>
-                    <button id="camera-btn" class="secondary-btn">Lens</button>
-                    <button id="torch-btn" class="secondary-btn">Flash</button>
-                    <button id="ocr-btn" class="secondary-btn">AI Scan</button>
-                    <label for="file-input" class="secondary-btn">Upload</label>
-                    <input type="file" id="file-input" accept="image/*" style="display:none">
+                <div class="scanner-wrapper mini">
+                    <div id="reader"></div>
+                    <button id="start-live-btn" class="text-btn">Or use Live Video Scanner (Experimental)</button>
                 </div>
-                <p class="scan-tip">Tip: Stay 8 inches away & use Zoom slider!</p>
             </section>
 
             <section id="product-details" class="hidden">
