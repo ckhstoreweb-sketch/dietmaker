@@ -368,33 +368,56 @@ async function scanNumbersOCR() {
         return;
     }
 
-    showToast("Reading numbers... hold still!");
+    showToast("Uploading to Cloud OCR...");
     
     try {
-        // Capture a frame from the video
         const video = document.querySelector('#reader video');
         const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0);
         
-        // Run OCR
-        const result = await Tesseract.recognize(canvas, 'eng', {
-            tessedit_char_whitelist: '0123456789' // Only look for numbers
+        // Resize for faster upload (max 1000px)
+        const scale = Math.min(1000 / video.videoWidth, 1000 / video.videoHeight, 1);
+        canvas.width = video.videoWidth * scale;
+        canvas.height = video.videoHeight * scale;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Convert to Blob
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+        
+        // Send to OCR.space API (Free Tier Key)
+        const formData = new FormData();
+        formData.append('file', blob, 'barcode.jpg');
+        formData.append('apikey', 'K81156828588957'); // Free API Key
+        formData.append('isOverlayRequired', 'false');
+        formData.append('language', 'eng');
+        formData.append('isTable', 'false');
+
+        const response = await fetch('https://api.ocr.space/parse/image', {
+            method: 'POST',
+            body: formData
         });
         
-        const cleanText = result.data.text.replace(/[^0-9]/g, '');
+        const data = await response.json();
         
-        if (cleanText.length >= 8) {
-            showToast(`Found: ${cleanText}`);
-            fetchProductData(cleanText);
+        if (data && data.ParsedResults && data.ParsedResults.length > 0) {
+            const text = data.ParsedResults[0].ParsedText;
+            // Extract the longest string of digits (the barcode)
+            const matches = text.match(/\d{8,14}/g);
+            
+            if (matches && matches.length > 0) {
+                const barcode = matches[0];
+                showToast(`Cloud found: ${barcode}`);
+                fetchProductData(barcode);
+            } else {
+                showToast("Cloud couldn't see numbers. Try closer.");
+            }
         } else {
-            showToast("Could not read numbers clearly. Try closer.");
+            showToast("Cloud OCR busy. Try again.");
         }
     } catch (err) {
-        console.error("OCR Error:", err);
-        showToast("OCR failed. Try photo upload.");
+        console.error("Cloud OCR Error:", err);
+        showToast("Cloud connection error.");
     }
 }
 
